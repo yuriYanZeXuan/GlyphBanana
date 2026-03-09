@@ -1,0 +1,3 @@
+[submodule "baselines/textdiffuser2/Calligrapher/baselines/textdiffuser2/diffusers_td2"]
+	path = baselines/textdiffuser2/Calligrapher/baselines/textdiffuser2/diffusers_td2
+	url = https://github.com/JingyeChen/diffusers_td2.git
