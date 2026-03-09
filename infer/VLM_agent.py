@@ -265,8 +265,13 @@ class VLMAgent:
         )
         return _extract_json_from_response(raw)
 
-    def generate_clean_prompt(self, prompt: str) -> str:
-        """将含文字描述的 prompt 改写为不渲染任何文本的 clean 版本"""
+    def generate_clean_prompt(self, prompt: str, typography_plan: dict = None) -> str:
+        """将含文字描述的 prompt 改写为不渲染任何文本的 clean 版本
+        
+        Args:
+            prompt: 原始 prompt
+            typography_plan: 排版规划（可选，用于未来扩展）
+        """
         raw = self.call_vlm(
             GENERATE_CLEAN_PROMPT,
             f"Original prompt:\n{prompt}",
