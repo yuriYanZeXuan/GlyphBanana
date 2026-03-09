@@ -309,3 +309,41 @@ class VLMAgent:
             scores.append(score)
 
         return scores
+
+    def select_best_image(
+        self,
+        images: list[Image.Image],
+        prompt: str,
+    ) -> int:
+        """从多张图像中选择最佳的一张，返回 0-based 索引
+        
+        Args:
+            images: 候选图像列表
+            prompt: 原始生成 prompt
+            
+        Returns:
+            最佳图像的索引
+        """
+        n = len(images)
+        if n <= 1:
+            return 0
+        
+        parts = [{"type": "text", "text": f"Prompt: {prompt}\n\nSelect the best image (1-{n}) based on:\n- Overall image quality\n- Text clarity and accuracy\n- Harmony between text and background\n\nOutput ONLY the image number (1-{n}), nothing else."}]
+        
+        for i, img in enumerate(images):
+            b64 = _encode_image_b64(img)
+            parts.append({"type": "text", "text": f"\nImage {i+1}:"})
+            parts.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+        
+        raw = self._api_call(
+            model=self._model,
+            messages=[{"role": "user", "content": parts}],
+            max_tokens=16,
+            temperature=0.1,
+        ).strip()
+        
+        # 解析数字
+        nums = [int(x) for x in __import__('re').findall(r"\d+", raw)]
+        if nums and 1 <= nums[0] <= n:
+            return nums[0] - 1
+        return 0  # 默认返回第一个

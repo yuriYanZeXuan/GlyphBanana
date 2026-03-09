@@ -149,9 +149,10 @@ def pixel_composite_text(background: Image.Image, injection_data: dict) -> Image
 
 def run_pass3_klein(
     pass2_image: Image.Image, injection_data: dict, klein_model_path: str,
-    prompt: str, steps: int, guidance: float, seed: int, device: str
+    prompt: str, steps: int, guidance: float, seed: int, device: str,
+    vlm_agent=None, output_path: str = None,
 ) -> Image.Image:
-    """Pass 3: FluxKlein 风格化"""
+    """Pass 3: FluxKlein 风格化 - 多 variant 生成 + VLM 选优"""
     klein_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "baselines", "fluxklein")
     if klein_dir not in sys.path:
         sys.path.insert(0, klein_dir)
@@ -164,16 +165,6 @@ def run_pass3_klein(
     style_prompt = f"Make text harmonize with the {prompt.split()[0]} style background, matching color and texture."
     print(f"Style prompt: {style_prompt}")
 
-    generator = torch.Generator(device=device).manual_seed(seed)
-    result = klein.pipe(
-        prompt=style_prompt,
-        image=[pass2_image],
-        num_inference_steps=steps,
-        guidance_scale=guidance,
-        generator=generator,
-    ).images[0]
-
-    # mask 混合
     template = injection_data["combined_template"]
     if template.size != pass2_image.size:
         template = template.resize(pass2_image.size, Image.LANCZOS)
@@ -184,12 +175,65 @@ def run_pass3_klein(
         mask = np.array(Image.fromarray((mask * 255).astype(np.uint8)).resize(pass2_image.size, Image.NEAREST)).astype(np.float32) / 255.0
     mask_3ch = mask[:, :, np.newaxis]
 
-    klein_result = Image.fromarray((
-        mask_3ch * np.array(result).astype(np.float32)
-        + (1 - mask_3ch) * np.array(pass2_image).astype(np.float32)
-    ).clip(0, 255).astype(np.uint8))
+    def _make_generator(seed_offset=0):
+        return torch.Generator(device=device).manual_seed(seed + seed_offset)
 
-    return klein_result
+    def _apply_mask(result_img, base_img):
+        """将结果与 base_img 按 mask 混合"""
+        return Image.fromarray((
+            mask_3ch * np.array(result_img).astype(np.float32)
+            + (1 - mask_3ch) * np.array(base_img).astype(np.float32)
+        ).clip(0, 255).astype(np.uint8))
+
+    variants = []
+
+    # Variant 1: 单图条件 + mask 混合 (seed)
+    print("  [1/3] Generating variant 1 (single image + mask)...")
+    result1 = klein.pipe(
+        prompt=style_prompt, image=[pass2_image],
+        num_inference_steps=steps, guidance_scale=guidance,
+        generator=_make_generator(0),
+    ).images[0]
+    variants.append(("klein_single_masked", _apply_mask(result1, pass2_image)))
+
+    # Variant 2: 单图条件，无 mask (seed+1)
+    print("  [2/3] Generating variant 2 (single image, no mask)...")
+    result2 = klein.pipe(
+        prompt=style_prompt, image=[pass2_image],
+        num_inference_steps=steps, guidance_scale=guidance,
+        generator=_make_generator(1),
+    ).images[0]
+    variants.append(("klein_nomask", result2.convert("RGB") if result2.mode != "RGB" else result2))
+
+    # Variant 3: 双图条件（pass2 + glyph 模板），无 mask (seed+2)
+    print("  [3/3] Generating variant 3 (dual image)...")
+    result3 = klein.pipe(
+        prompt=style_prompt, image=[pass2_image, template],
+        num_inference_steps=steps, guidance_scale=guidance,
+        generator=_make_generator(2),
+    ).images[0]
+    variants.append(("klein_dual", result3.convert("RGB") if result3.mode != "RGB" else result3))
+
+    # 保存拼接图
+    if output_path:
+        concat_path = output_path.replace(".png", "_pass3_variants.png")
+        w, h = pass2_image.size
+        concat = Image.new("RGB", (w * len(variants), h))
+        for i, (name, img) in enumerate(variants):
+            concat.paste(img.resize((w, h), Image.LANCZOS), (w * i, 0))
+        concat.save(concat_path)
+        print(f"  Saved variants concat to: {concat_path}")
+
+    # VLM 选优
+    if vlm_agent:
+        print("  VLM selecting best variant...")
+        images = [img for _, img in variants]
+        best_idx = vlm_agent.select_best_image(images, prompt)
+        print(f"  Selected: {variants[best_idx][0]} (index {best_idx})")
+        return variants[best_idx][1]
+    
+    # 默认返回第一个
+    return variants[0][1]
 
 
 def main():
@@ -258,7 +302,8 @@ def main():
 
         final_image = run_pass3_klein(
             pass2_image, injection_data, args.klein_model_path,
-            working_prompt, args.klein_steps, args.klein_guidance, args.seed, device
+            working_prompt, args.klein_steps, args.klein_guidance, args.seed, device,
+            vlm_agent=vlm_agent, output_path=args.output
         )
 
         # 恢复主模型
