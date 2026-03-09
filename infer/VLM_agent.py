@@ -8,7 +8,6 @@ VLM Agent: 统一的 VLM 调用中心
 import os
 import re
 import json
-import time
 import base64
 from io import BytesIO
 from pathlib import Path
@@ -192,25 +191,15 @@ class VLMAgent:
         self._base_url = base_url or os.getenv("QST_BASE_URL")
         self._model = model
 
-        key1 = api_key or os.getenv("QST_API_KEY")
-        key2 = os.getenv("QST_API_KEY2")
-        self._clients = []
-        if key1:
-            self._clients.append(OpenAI(api_key=key1, base_url=self._base_url))
-        if key2:
-            self._clients.append(OpenAI(api_key=key2, base_url=self._base_url))
-        if not self._clients:
-            raise RuntimeError("QST_API_KEY and QST_API_KEY2 are both unset")
+        api_key = api_key or os.getenv("QST_API_KEY")
+        if not api_key:
+            raise RuntimeError("QST_API_KEY not set")
+        self._client = OpenAI(api_key=api_key, base_url=self._base_url)
 
     def _api_call(self, **call_kwargs) -> str:
-        """轮换所有 key 无限重试，返回响应文本"""
-        attempt = 0
-        while True:
-            for idx, cli in enumerate(self._clients):
-                resp = cli.chat.completions.create(**call_kwargs)
-                return resp.choices[0].message.content
-            attempt += 1
-            time.sleep(30)
+        """调用 VLM API，返回响应文本"""
+        resp = self._client.chat.completions.create(**call_kwargs)
+        return resp.choices[0].message.content
 
     def call_vlm(
         self,
