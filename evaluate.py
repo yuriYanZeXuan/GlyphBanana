@@ -54,6 +54,15 @@ def compute_text_accuracy(ground_truth: str, recognized: str) -> float:
     return max(0.0, 1 - Levenshtein.distance(gt, rec) / len(gt))
 
 
+def normalize_ground_truth_text(value) -> str:
+    """Normalize prompt/text field to a flat string."""
+    if isinstance(value, list):
+        return " ".join(str(item).strip() for item in value if str(item).strip())
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
 class VLMOCR:
     """VLM-based OCR evaluator using OpenAI-compatible API."""
     OCR_PROMPT = (
@@ -88,9 +97,14 @@ class VLMOCR:
             text = text[1:-1]
         return text
 
-    def evaluate(self, image: Image.Image, prompt: str) -> dict:
-        """Evaluate image against expected text from prompt."""
-        ground_truth = extract_text_from_prompt(prompt)
+    def evaluate(
+        self,
+        image: Image.Image,
+        prompt: Optional[str] = None,
+        ground_truth: Optional[str] = None,
+    ) -> dict:
+        """Evaluate image against expected text from prompt or explicit ground truth."""
+        ground_truth = normalize_ground_truth_text(ground_truth) or extract_text_from_prompt(prompt or "")
         recognized = self.ocr(image)
         return {
             "ground_truth": ground_truth,
@@ -121,6 +135,22 @@ def evaluate_single(ocr: VLMOCR, image_path: Path, prompt: str) -> dict:
     print(f"   Expected: \"{gt_short}\"")
     print(f"   OCR:      \"{rec_short}\"")
     print(f"   Accuracy: {result['accuracy']:.4f}")
+    return result
+
+
+def evaluate_image(
+    image_path: str | Path,
+    prompt: Optional[str] = None,
+    ground_truth: Optional[str] = None,
+    ocr: Optional[VLMOCR] = None,
+    vlm_model: str = "qwen3-vl-235b-a22b-instruct",
+) -> dict:
+    """Reusable file-based evaluation helper."""
+    image_path = Path(image_path)
+    evaluator = ocr or VLMOCR(model=vlm_model)
+    image = Image.open(image_path).convert("RGB")
+    result = evaluator.evaluate(image, prompt=prompt, ground_truth=ground_truth)
+    result["image"] = image_path.name
     return result
 
 

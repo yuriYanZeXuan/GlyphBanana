@@ -37,6 +37,16 @@ python generate.py \
     --output output.png
 ```
 
+### Generate with `qwen-image`
+
+```bash
+python generate.py \
+    --backend qwen-image \
+    --prompt 'A whiteboard displaying "E=mc²" in a classroom' \
+    --text "E=mc²" \
+    --output output_qwen.png
+```
+
 ### Evaluate Text Accuracy
 
 ```bash
@@ -54,12 +64,37 @@ python evaluate.py \
     --output results.json
 ```
 
+### GlyphBanana-Benchmark Batch Generation
+
+```bash
+python scripts/batch_generate.py \
+    --dataset-dir eval/GlyphBanana-Benchmark \
+    --output-dir outputs/glyphbanana_benchmark_zimage \
+    --backend zimage
+```
+
+### GlyphBanana-Benchmark Batch Evaluation
+
+```bash
+python scripts/batch_evaluate.py \
+    --dataset-dir eval/GlyphBanana-Benchmark \
+    --image-dir outputs/glyphbanana_benchmark_zimage \
+    --output outputs/glyphbanana_benchmark_zimage/results.json
+```
+
+### Gradio Demo
+
+```bash
+python demo/gradio_app.py --server-port 7860
+```
+
 ## Usage
 
 ### Generation Options
 
 ```bash
 python generate.py \
+    --backend zimage \
     --prompt "Your prompt with text description" \
     --text "Text to render" "More text" \
     --output result.png \
@@ -68,6 +103,19 @@ python generate.py \
     --height 1024 \
     --width 1024 \
     --no-harmonize  # Skip Pass 3
+```
+
+手工 layout 可通过 `--text-regions-file regions.json` 传入，格式为：
+
+```json
+[
+  {
+    "content": "GlyphBanana",
+    "bbox": [0.1, 0.35, 0.9, 0.55],
+    "font": "auto",
+    "color": "#FFFFFF"
+  }
+]
 ```
 
 ### Evaluation Options
@@ -93,20 +141,23 @@ The `prompts.json` file should map image filenames to their expected text:
 
 ```
 GlyphBanana/
-├── generate.py          # Main generation script (280 lines)
-├── evaluate.py          # OCR evaluation script (182 lines)
+├── generate.py          # Unified generation entry for zimage/qwen-image
+├── evaluate.py          # OCR evaluation script + reusable helpers
 ├── example.py           # Usage examples
+├── demo/                # Gradio demo
+├── scripts/             # Batch generation/evaluation scripts
 ├── requirements.txt     # Dependencies
 ├── infer/               # Core inference modules
 │   ├── VLM_agent.py         # VLM API interface
 │   ├── glyph_injector.py    # Glyph rendering and latent injection
+│   ├── qwen_image_inference.py # Qwen-image backend
 │   ├── formula_helper.py    # Text/LaTeX rendering
 │   └── attn_enhancement.py  # Attention enhancement
 ├── train/zimage_ip/     # ZImage pipeline (core generation model)
 ├── baselines/           # Minimal baselines
 │   ├── fluxklein/       # Pass 3 harmonization (required)
 │   └── results/         # Output directory
-└── eval/                # Evaluation module
+└── eval/                # Evaluation module and benchmark datasets
 ```
 
 ## Model Requirements

@@ -9,3 +9,4 @@ accelerate==0.30.1
 openai>=1.0.0
 python-Levenshtein>=0.25.0
 python-dotenv>=1.0.0
+gradio>=5.0.0
