@@ -106,7 +106,7 @@ def load_qwen_pipeline(model_path: str, device: str, dtype=torch.bfloat16):
     pipe.to("cpu")
     if isinstance(device, str) and device.startswith("cuda"):
         gpu_id = int(device.split(":", 1)[1]) if ":" in device else 0
-        pipe.enable_model_cpu_offload(gpu_id=gpu_id)
+        pipe.enable_sequential_cpu_offload(gpu_id=gpu_id)
     print("QwenImage model loaded.")
     return pipe
 
@@ -185,7 +185,6 @@ def decode_latent(pipeline, latent: torch.Tensor) -> Image.Image:
 
 def decode_latent_qwen(pipeline, latent: torch.Tensor, height: int, width: int) -> Image.Image:
     """Decode packed Qwen latent to PIL Image."""
-    move_qwen_component(pipeline, "vae", latent.device.type if latent.device.index is None else f"{latent.device.type}:{latent.device.index}")
     latent = pipeline._unpack_latents(latent, height, width, pipeline.vae_scale_factor)
     latent = latent.to(pipeline.vae.dtype)
     latents_mean = torch.tensor(pipeline.vae.config.latents_mean).view(
@@ -197,10 +196,7 @@ def decode_latent_qwen(pipeline, latent: torch.Tensor, height: int, width: int) 
     latent = latent / latents_std + latents_mean
     with torch.no_grad():
         image = pipeline.vae.decode(latent, return_dict=False)[0][:, :, 0]
-    result = pipeline.image_processor.postprocess(image, output_type="pil")[0]
-    move_qwen_component(pipeline, "vae", "cpu")
-    cuda_empty_cache(str(latent.device))
-    return result
+    return pipeline.image_processor.postprocess(image, output_type="pil")[0]
 
 
 def run_pass1_reference(pipeline, prompt: str, noise: torch.Tensor, timesteps, device: str) -> Image.Image:
@@ -283,20 +279,16 @@ def run_pass2_injection_qwen(
     args,
 ) -> torch.Tensor:
     """Pass 2: Qwen denoising with glyph injection."""
+    execution_device = pipeline._execution_device
     dtype = pipeline.transformer.dtype
     latent_h = noise.shape[3]
     latent_w = noise.shape[4]
     num_channels = noise.shape[2]
 
-    move_qwen_component(pipeline, "text_encoder", device)
-    prompt_embeds, _ = pipeline.encode_prompt(prompt=prompt, device=device, max_sequence_length=512)
-    negative_embeds, _ = pipeline.encode_prompt(prompt="", device=device, max_sequence_length=512)
-    move_qwen_component(pipeline, "text_encoder", "cpu")
-    cuda_empty_cache(device)
-
-    move_qwen_component(pipeline, "transformer", device)
+    prompt_embeds, _ = pipeline.encode_prompt(prompt=prompt, device=execution_device, max_sequence_length=512)
+    negative_embeds, _ = pipeline.encode_prompt(prompt="", device=execution_device, max_sequence_length=512)
     latent = pipeline._pack_latents(
-        noise.to(device=device, dtype=dtype),
+        noise.to(device=execution_device, dtype=dtype),
         1,
         num_channels,
         latent_h,
@@ -308,7 +300,7 @@ def run_pass2_injection_qwen(
 
     guidance = None
     if pipeline.transformer.config.guidance_embeds and args.qwen_guidance_scale is not None:
-        guidance = torch.full([1], args.qwen_guidance_scale, device=device, dtype=torch.float32)
+        guidance = torch.full([1], args.qwen_guidance_scale, device=execution_device, dtype=torch.float32)
 
     pipeline.scheduler.set_begin_index(0)
     for step_idx, t in enumerate(timesteps):
@@ -345,8 +337,6 @@ def run_pass2_injection_qwen(
             spatial = injection_data["glyph_injector"].inject_latent(spatial.squeeze(2), injection_data, step_idx + 1)
             latent = pipeline._pack_latents(spatial.unsqueeze(2), 1, num_channels, latent_h, latent_w)
 
-    move_qwen_component(pipeline, "transformer", "cpu")
-    cuda_empty_cache(device)
     return latent
 
 
