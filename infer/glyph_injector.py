@@ -187,9 +187,9 @@ class GlyphInjector:
         for t in timesteps:
             sigma = t.float() / 1000.0
             z_t = (1 - sigma) * latent_0 + sigma * noise
-            latent_list.append(z_t.clone())
+            latent_list.append(z_t.detach().cpu())
         
-        latent_list.append(latent_0.clone())
+        latent_list.append(latent_0.detach().cpu())
         return latent_list
     
     def prepare_injection_from_plan(
@@ -241,7 +241,7 @@ class GlyphInjector:
         latent_w = 2 * (width // (self.vae_scale_factor * 2))
         mask_area = cv2.resize(full_mask, (latent_w, latent_h), interpolation=cv2.INTER_AREA)
         mask_latent = (mask_area > 2).astype(np.float32)
-        mask_latent = torch.from_numpy(mask_latent).unsqueeze(0).unsqueeze(0).to(self.device)
+        mask_latent = torch.from_numpy(mask_latent).unsqueeze(0).unsqueeze(0)
 
         return {
             "latent_list": latent_list,
@@ -318,8 +318,8 @@ class GlyphInjector:
             return current_latent
         
         idx = min(step_idx, len(latent_list) - 1)
-        text_latent = latent_list[idx]
-        mask = injection_data["mask_latent"]
+        text_latent = latent_list[idx].to(device=current_latent.device, dtype=current_latent.dtype)
+        mask = injection_data["mask_latent"].to(device=current_latent.device, dtype=current_latent.dtype)
         mask = mask.expand_as(current_latent)
         
         # Frequency decomposition injection
