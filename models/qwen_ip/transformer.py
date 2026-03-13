@@ -13,6 +13,7 @@
 # limitations under the License.
 
 
+from contextlib import nullcontext
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
@@ -286,6 +287,11 @@ class QwenTransformer2DModel(
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
+    def cache_context(self, _key: str):
+        # The original Qwen implementation caches KV states per branch.
+        # This local compatibility port keeps the API but performs no caching.
+        return nullcontext()
+
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -297,8 +303,15 @@ class QwenTransformer2DModel(
         txt_ids: torch.Tensor = None,
         guidance: torch.Tensor = None,
         joint_attention_kwargs: Optional[Dict[str, Any]] = None,
+        attention_kwargs: Optional[Dict[str, Any]] = None,
+        encoder_hidden_states_mask: Optional[torch.Tensor] = None,
+        txt_seq_lens: Optional[list[int]] = None,
+        img_shapes: Optional[list[list[tuple[int, int, int]]]] = None,
         return_dict: bool = True,
+        **kwargs,
     ) -> Union[torch.Tensor, Transformer2DModelOutput]:
+        if attention_kwargs is not None and joint_attention_kwargs is None:
+            joint_attention_kwargs = attention_kwargs
 
         if joint_attention_kwargs is not None:
             lora_scale = joint_attention_kwargs.pop("scale", 1.0)
@@ -308,12 +321,10 @@ class QwenTransformer2DModel(
         if USE_PEFT_BACKEND:
             scale_lora_layers(self, lora_scale)
         
-        # This is a placeholder forward pass.
-        # The actual logic for handling packed latents for inpainting,
-        # rotary embeddings, and controlnet residuals should be implemented
-        # based on the specific architecture of qwen-edit.
-        
         hidden_states = self.x_embedder(hidden_states)
+
+        if encoder_hidden_states is None:
+            raise ValueError("`encoder_hidden_states` is required for QwenTransformer2DModel.")
 
         timestep = timestep.to(hidden_states.dtype) * 1000
         if guidance is not None:
@@ -321,15 +332,21 @@ class QwenTransformer2DModel(
         else:
             guidance = None
 
+        if pooled_projections is None:
+            pooled_projections = torch.zeros(
+                hidden_states.shape[0],
+                self.config.pooled_projection_dim,
+                device=hidden_states.device,
+                dtype=hidden_states.dtype,
+            )
+
         temb = (
             self.time_text_embed(timestep, pooled_projections)
             if guidance is None
             else self.time_text_embed(timestep, guidance, pooled_projections)
         )
         encoder_hidden_states = self.context_embedder(encoder_hidden_states)
-        
-        ids = torch.cat((txt_ids, img_ids), dim=0)
-        image_rotary_emb = self.pos_embed(ids)
+        image_rotary_emb = None
 
         for block in self.transformer_blocks:
             encoder_hidden_states, hidden_states = block(

@@ -31,16 +31,29 @@ export QST_API_KEY="your-api-key"
 ### Generate an Image
 
 ```bash
-python generate.py \
+python3 generate.py \
     --prompt 'A whiteboard displaying "E=mc²" in a classroom' \
     --text "E=mc²" \
     --output output.png
 ```
 
+### Test Both Backends
+
+```bash
+bash scripts/test_backends.sh
+```
+
+Only test one backend:
+
+```bash
+bash scripts/test_backends.sh zimage
+bash scripts/test_backends.sh qwen
+```
+
 ### Evaluate Text Accuracy
 
 ```bash
-python evaluate.py \
+python3 evaluate.py \
     --image output.png \
     --prompt 'A whiteboard displaying "E=mc²"'
 ```
@@ -48,7 +61,7 @@ python evaluate.py \
 ### Batch Evaluation
 
 ```bash
-python evaluate.py \
+python3 evaluate.py \
     --image_dir outputs/ \
     --prompt_file prompts.json \
     --output results.json
@@ -59,10 +72,11 @@ python evaluate.py \
 ### Generation Options
 
 ```bash
-python generate.py \
+python3 generate.py \
     --prompt "Your prompt with text description" \
     --text "Text to render" "More text" \
     --output result.png \
+    --backend zimage \
     --steps 20 \
     --seed 42 \
     --height 1024 \
@@ -70,10 +84,27 @@ python generate.py \
     --no-harmonize  # Skip Pass 3
 ```
 
+Backend-specific examples:
+
+```bash
+python3 generate.py \
+    --backend zimage \
+    --prompt 'A storefront sign saying "CAFE"' \
+    --text "CAFE" \
+    --output output_zimage.png
+
+python3 generate.py \
+    --backend qwen \
+    --prompt 'A storefront sign saying "CAFE"' \
+    --text "CAFE" \
+    --output output_qwen.png \
+    --qwen-true-cfg-scale 4.0
+```
+
 ### Evaluation Options
 
 ```bash
-python evaluate.py \
+python3 evaluate.py \
     --image_dir results/ \
     --prompt_file data.json \
     --vlm_model qwen3-vl-235b-a22b-instruct \
@@ -93,25 +124,28 @@ The `prompts.json` file should map image filenames to their expected text:
 
 ```
 GlyphBanana/
-├── generate.py          # Main generation script (280 lines)
+├── generate.py          # Main generation script
 ├── evaluate.py          # OCR evaluation script (182 lines)
 ├── example.py           # Usage examples
 ├── requirements.txt     # Dependencies
+├── scripts/             # Simple backend test scripts
+│   └── test_backends.sh
 ├── infer/               # Core inference modules
 │   ├── VLM_agent.py         # VLM API interface
 │   ├── glyph_injector.py    # Glyph rendering and latent injection
 │   ├── formula_helper.py    # Text/LaTeX rendering
 │   └── attn_enhancement.py  # Attention enhancement
-├── train/zimage_ip/     # ZImage pipeline (core generation model)
-├── baselines/           # Minimal baselines
-│   ├── fluxklein/       # Pass 3 harmonization (required)
-│   └── results/         # Output directory
+├── models/              # Local model definitions
+│   ├── zimage_ip/       # Z-Image backend
+│   ├── qwen_ip/         # Qwen-Image backend
+│   └── fluxklein/       # Pass 3 harmonization backend
+├── baselines/           # Other baseline assets
 └── eval/                # Evaluation module
 ```
 
 ## Model Requirements
 
-- **Base Model**: FLUX.1-Fill-dev or compatible
+- **Backends**: Z-Image and Qwen-Image
 - **VLM API**: OpenAI-compatible API for typography analysis and OCR
 - **Optional**: FluxKlein for harmonization (Pass 3)
 

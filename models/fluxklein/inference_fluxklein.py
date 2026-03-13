@@ -10,9 +10,8 @@ from diffusers.utils import load_image
 from diffusers.schedulers import FlowMatchEulerDiscreteScheduler
 from transformers import Qwen2TokenizerFast, Qwen3ForCausalLM
 
-# Add current directory to path for local imports
-from models import AutoencoderKLFlux2, Flux2Transformer2DModel
-from pipeline_flux2_klein import Flux2KleinPipeline
+from .models import AutoencoderKLFlux2, Flux2Transformer2DModel
+from .pipeline_flux2_klein import Flux2KleinPipeline
 
 
 def load_model_weights(model, model_path, subfolder, torch_dtype):

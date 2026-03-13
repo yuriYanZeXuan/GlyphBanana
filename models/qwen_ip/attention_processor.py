@@ -22,14 +22,14 @@ from diffusers.utils.torch_utils import maybe_allow_in_graph
 
 
 class IPAQwenAttnProcessor(AttentionProcessor):
-    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=4):
+    def __init__(self, hidden_size=None, cross_attention_dim=None, num_tokens=4):
         super().__init__()
         self.hidden_size = hidden_size
         self.cross_attention_dim = cross_attention_dim
         self.num_tokens = num_tokens
 
-        self.to_k_ip = nn.Linear(cross_attention_dim, hidden_size, bias=False)
-        self.to_v_ip = nn.Linear(cross_attention_dim, hidden_size, bias=False)
+        self.to_k_ip = None
+        self.to_v_ip = None
     
     def __call__(
         self,
@@ -70,12 +70,18 @@ class IPAQwenAttnProcessor(AttentionProcessor):
         value = attn.to_v(encoder_hidden_states)
         
         # image
-        ip_hidden_states = kwargs.pop("image_emb")
-        ip_key = self.to_k_ip(ip_hidden_states)
-        ip_value = self.to_v_ip(ip_hidden_states)
-        
-        key = torch.cat([key, ip_key], dim=1)
-        value = torch.cat([value, ip_value], dim=1)
+        ip_hidden_states = kwargs.pop("image_emb", None)
+        if ip_hidden_states is not None:
+            if self.to_k_ip is None or self.to_v_ip is None:
+                cross_dim = self.cross_attention_dim or ip_hidden_states.shape[-1]
+                hidden_dim = self.hidden_size or key.shape[-1]
+                self.to_k_ip = nn.Linear(cross_dim, hidden_dim, bias=False).to(ip_hidden_states.device, ip_hidden_states.dtype)
+                self.to_v_ip = nn.Linear(cross_dim, hidden_dim, bias=False).to(ip_hidden_states.device, ip_hidden_states.dtype)
+
+            ip_key = self.to_k_ip(ip_hidden_states)
+            ip_value = self.to_v_ip(ip_hidden_states)
+            key = torch.cat([key, ip_key], dim=1)
+            value = torch.cat([value, ip_value], dim=1)
 
         query = attn.head_to_batch_dim(query)
         key = attn.head_to_batch_dim(key)
