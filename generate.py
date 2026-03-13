@@ -507,7 +507,13 @@ def main():
     print(f"Clean prompt: {clean_prompt}")
 
     image_size = (args.width, args.height)
-    injection_data = glyph_injector.prepare_injection_from_plan(typography_plan, image_size, noise, timesteps)
+    injection_noise = noise.squeeze(1) if args.backend == "qwen" else noise
+    injection_data = glyph_injector.prepare_injection_from_plan(
+        typography_plan,
+        image_size,
+        injection_noise,
+        timesteps,
+    )
     if args.backend == "qwen":
         offload_qwen_pipeline(pipeline)
 
