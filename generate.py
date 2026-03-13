@@ -463,9 +463,7 @@ def run_pass3_klein(
     return variants[0][1]
 
 
-def main():
-    args = parse_args()
-
+def run_generation(args) -> Image.Image:
     device = args.device
     model_path = resolve_model_path(args.backend, args.model_path)
     generator = torch.Generator(device=device).manual_seed(args.seed)
@@ -558,6 +556,50 @@ def main():
         final_image = final_image.convert("RGB")
     final_image.save(args.output)
     print(f"\nSaved to: {args.output}")
+    return final_image
+
+
+def generate_image(
+    prompt: str,
+    text: list[str],
+    output: str = "output.png",
+    backend: str = "zimage",
+    model_path: Optional[str] = None,
+    device: str = "cuda",
+    seed: int = 42,
+    steps: int = 20,
+    height: int = 1024,
+    width: int = 1024,
+    no_harmonize: bool = False,
+    qwen_true_cfg_scale: float = 4.0,
+    qwen_guidance_scale: Optional[float] = None,
+    klein_model_path: str = "/mnt/tidalfs-bdsz01/usr/tusen/yanzexuan/weight/flux2-klein",
+    klein_steps: int = 10,
+    klein_guidance: float = 4.0,
+) -> Image.Image:
+    args = argparse.Namespace(
+        prompt=prompt,
+        text=text,
+        output=output,
+        backend=backend,
+        model_path=model_path,
+        device=device,
+        seed=seed,
+        steps=steps,
+        height=height,
+        width=width,
+        no_harmonize=no_harmonize,
+        qwen_true_cfg_scale=qwen_true_cfg_scale,
+        qwen_guidance_scale=qwen_guidance_scale,
+        klein_model_path=klein_model_path,
+        klein_steps=klein_steps,
+        klein_guidance=klein_guidance,
+    )
+    return run_generation(args)
+
+
+def main():
+    run_generation(parse_args())
 
 
 if __name__ == "__main__":

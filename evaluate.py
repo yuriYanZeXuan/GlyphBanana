@@ -34,6 +34,15 @@ def extract_text_from_prompt(prompt: str) -> str:
     return ' '.join(texts) if texts else prompt
 
 
+def resolve_expected_text(prompt: Optional[str] = None, text: Optional[str] = None) -> str:
+    """Resolve expected text from explicit text or quoted prompt."""
+    if text is not None:
+        return text
+    if prompt is None:
+        raise ValueError("Either `text` or `prompt` is required")
+    return extract_text_from_prompt(prompt)
+
+
 def encode_image_b64(image: Image.Image) -> str:
     """PIL Image to base64 string."""
     buf = BytesIO()
@@ -99,6 +108,25 @@ class VLMOCR:
         }
 
 
+def evaluate_image(
+    image: Image.Image,
+    prompt: Optional[str] = None,
+    text: Optional[str] = None,
+    model: str = "qwen3-vl-235b-a22b-instruct",
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+) -> dict:
+    """Evaluate one image against explicit text or quoted prompt."""
+    ocr = VLMOCR(model=model, api_key=api_key, base_url=base_url)
+    ground_truth = resolve_expected_text(prompt=prompt, text=text)
+    recognized = ocr.ocr(image)
+    return {
+        "ground_truth": ground_truth,
+        "recognized": recognized,
+        "accuracy": compute_text_accuracy(ground_truth, recognized),
+    }
+
+
 def load_prompts(prompt_file: str) -> dict:
     """Load prompts from JSON file."""
     with open(prompt_file, 'r', encoding='utf-8') as f:
@@ -129,6 +157,7 @@ def main():
     parser.add_argument("--image", type=str, help="Single image path")
     parser.add_argument("--image_dir", type=str, help="Directory containing images")
     parser.add_argument("--prompt", type=str, help="Text prompt for single image")
+    parser.add_argument("--text", type=str, help="Expected text for single image")
     parser.add_argument("--prompt_file", type=str, help="JSON file with prompts")
     parser.add_argument("--vlm_model", type=str, default="qwen3-vl-235b-a22b-instruct")
     parser.add_argument("--output", type=str, help="Output JSON file for results")
@@ -156,6 +185,8 @@ def main():
     for img_path in images:
         prompt = args.prompt if (args.prompt and len(images) == 1) else \
                  prompts.get(img_path.name, prompts.get(img_path.stem))
+        if args.text and len(images) == 1:
+            prompt = args.text
         if not prompt:
             print(f"⚠️  No prompt for {img_path.name}, skipping...")
             continue

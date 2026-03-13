@@ -18,8 +18,7 @@ run_zimage() {
     --text "$TEXT" \
     --output "$OUT_DIR/zimage.png" \
     --steps 12 \
-    --seed 42 \
-    --no-harmonize
+    --seed 42
 }
 
 run_qwen() {
@@ -30,8 +29,7 @@ run_qwen() {
     --text "$TEXT" \
     --output "$OUT_DIR/qwen.png" \
     --steps 12 \
-    --seed 42 \
-    --no-harmonize
+    --seed 42
 }
 
 case "$MODE" in
