@@ -479,6 +479,7 @@ def main():
     print("\n=== Pass 1: Reference Image ===")
     if args.backend == "qwen":
         reference_image = run_pass1_reference_qwen(pipeline, working_prompt, packed_noise, args, generator)
+        offload_qwen_pipeline(pipeline)
     else:
         reference_image = run_pass1_reference(pipeline, working_prompt, noise.clone(), timesteps, device)
 
@@ -495,6 +496,8 @@ def main():
 
     image_size = (args.width, args.height)
     injection_data = glyph_injector.prepare_injection_from_plan(typography_plan, image_size, noise, timesteps)
+    if args.backend == "qwen":
+        offload_qwen_pipeline(pipeline)
 
     if injection_data["full_mask"].max() == 0:
         print("Warning: Empty glyph mask, returning reference image")
