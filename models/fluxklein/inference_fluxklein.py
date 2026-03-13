@@ -173,18 +173,8 @@ class FluxKleinGenerator:
         if enable_cpu_offload:
             # IMPORTANT: In multi-process/multi-GPU, diffusers defaults to gpu_id=0.
             # If we don't pass the correct gpu_id, every process will offload/execute on GPU 0 -> OOM.
-            gpu_id = 0
-            if isinstance(device, str) and device.startswith("cuda:"):
-                try:
-                    gpu_id = int(device.split("cuda:")[-1])
-                except ValueError:
-                    gpu_id = 0
-            try:
-                self.pipe.enable_model_cpu_offload(gpu_id=gpu_id)
-            except TypeError:
-                # Backward compatibility for older diffusers that don't accept gpu_id.
-                # In this case, ensure the current CUDA device is set by the caller.
-                self.pipe.enable_model_cpu_offload()
+            gpu_id = int(device.split(":", 1)[1]) if isinstance(device, str) and ":" in device else 0
+            self.pipe.enable_model_cpu_offload(gpu_id=gpu_id)
             print("Flux-Klein pipeline initialized with CPU offload.")
         else:
             self.pipe.to(device)

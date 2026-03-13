@@ -103,7 +103,10 @@ def load_qwen_pipeline(model_path: str, device: str, dtype=torch.bfloat16):
     register_qwen_classes()
     print(f"Loading QwenImage model from {model_path}...")
     pipe = diffusers.DiffusionPipeline.from_pretrained(model_path, torch_dtype=dtype, low_cpu_mem_usage=False)
-    pipe.to(device)
+    pipe.to("cpu")
+    if isinstance(device, str) and device.startswith("cuda"):
+        gpu_id = int(device.split(":", 1)[1]) if ":" in device else 0
+        pipe.enable_model_cpu_offload(gpu_id=gpu_id)
     print("QwenImage model loaded.")
     return pipe
 
@@ -112,6 +115,23 @@ def load_pipeline(backend: str, model_path: str, device: str, dtype=torch.bfloat
     if backend == "qwen":
         return load_qwen_pipeline(model_path, device, dtype=dtype)
     return load_zimage_pipeline(model_path, device, dtype=dtype)
+
+
+def cuda_empty_cache(device: str):
+    if isinstance(device, str) and device.startswith("cuda") and torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
+def move_qwen_component(pipeline, component_name: str, device: str):
+    component = getattr(pipeline, component_name, None)
+    if component is not None:
+        component.to(device)
+
+
+def offload_qwen_pipeline(pipeline):
+    for component_name in ("text_encoder", "transformer", "vae"):
+        move_qwen_component(pipeline, component_name, "cpu")
+    cuda_empty_cache(getattr(pipeline, "_execution_device", "cuda"))
 
 
 def prepare_noise(pipeline, height: int, width: int, device: str, generator=None):
@@ -165,6 +185,7 @@ def decode_latent(pipeline, latent: torch.Tensor) -> Image.Image:
 
 def decode_latent_qwen(pipeline, latent: torch.Tensor, height: int, width: int) -> Image.Image:
     """Decode packed Qwen latent to PIL Image."""
+    move_qwen_component(pipeline, "vae", latent.device.type if latent.device.index is None else f"{latent.device.type}:{latent.device.index}")
     latent = pipeline._unpack_latents(latent, height, width, pipeline.vae_scale_factor)
     latent = latent.to(pipeline.vae.dtype)
     latents_mean = torch.tensor(pipeline.vae.config.latents_mean).view(
@@ -176,7 +197,10 @@ def decode_latent_qwen(pipeline, latent: torch.Tensor, height: int, width: int) 
     latent = latent / latents_std + latents_mean
     with torch.no_grad():
         image = pipeline.vae.decode(latent, return_dict=False)[0][:, :, 0]
-    return pipeline.image_processor.postprocess(image, output_type="pil")[0]
+    result = pipeline.image_processor.postprocess(image, output_type="pil")[0]
+    move_qwen_component(pipeline, "vae", "cpu")
+    cuda_empty_cache(str(latent.device))
+    return result
 
 
 def run_pass1_reference(pipeline, prompt: str, noise: torch.Tensor, timesteps, device: str) -> Image.Image:
@@ -264,9 +288,13 @@ def run_pass2_injection_qwen(
     latent_w = noise.shape[4]
     num_channels = noise.shape[2]
 
+    move_qwen_component(pipeline, "text_encoder", device)
     prompt_embeds, _ = pipeline.encode_prompt(prompt=prompt, device=device, max_sequence_length=512)
     negative_embeds, _ = pipeline.encode_prompt(prompt="", device=device, max_sequence_length=512)
+    move_qwen_component(pipeline, "text_encoder", "cpu")
+    cuda_empty_cache(device)
 
+    move_qwen_component(pipeline, "transformer", device)
     latent = pipeline._pack_latents(
         noise.to(device=device, dtype=dtype),
         1,
@@ -317,6 +345,8 @@ def run_pass2_injection_qwen(
             spatial = injection_data["glyph_injector"].inject_latent(spatial.squeeze(2), injection_data, step_idx + 1)
             latent = pipeline._pack_latents(spatial.unsqueeze(2), 1, num_channels, latent_h, latent_w)
 
+    move_qwen_component(pipeline, "transformer", "cpu")
+    cuda_empty_cache(device)
     return latent
 
 
@@ -344,13 +374,17 @@ def pixel_composite_text(background: Image.Image, injection_data: dict) -> Image
 def run_pass3_klein(
     pass2_image: Image.Image, injection_data: dict, klein_model_path: str,
     prompt: str, steps: int, guidance: float, seed: int, device: str,
-    vlm_agent=None, output_path: str = None,
+    vlm_agent=None, output_path: str = None, enable_cpu_offload: bool = False,
 ) -> Image.Image:
     """Pass 3: FluxKlein stylization - multi-variant generation + VLM selection"""
     from models.fluxklein.inference_fluxklein import FluxKleinGenerator
 
     print(f"Loading FluxKlein from {klein_model_path}...")
-    klein = FluxKleinGenerator(model_path=klein_model_path, device=device)
+    klein = FluxKleinGenerator(
+        model_path=klein_model_path,
+        device=device,
+        enable_cpu_offload=enable_cpu_offload,
+    )
 
     # Generate style prompt
     style_prompt = f"Make text harmonize with the {prompt.split()[0]} style background, matching color and texture."
@@ -490,16 +524,22 @@ def main():
 
     if not args.no_harmonize:
         print("\n=== Pass 3: Harmonization ===")
-        pipeline.to("cpu")
-        torch.cuda.empty_cache()
+        if args.backend == "qwen":
+            offload_qwen_pipeline(pipeline)
+        else:
+            pipeline.to("cpu")
+            cuda_empty_cache(device)
 
         final_image = run_pass3_klein(
             pass2_image, injection_data, args.klein_model_path,
             working_prompt, args.klein_steps, args.klein_guidance, args.seed, device,
-            vlm_agent=vlm_agent, output_path=args.output
+            vlm_agent=vlm_agent,
+            output_path=args.output,
+            enable_cpu_offload=(args.backend == "qwen"),
         )
 
-        pipeline.to(device)
+        if args.backend != "qwen":
+            pipeline.to(device)
     else:
         final_image = pass2_image
 
