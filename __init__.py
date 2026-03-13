@@ -1,4 +1,4 @@
-"""GlyphBanana: Text Rendering with Glyph Injection"""
+"""GlyphBanana: text rendering and OCR evaluation."""
 
 __version__ = "1.0.0"
 

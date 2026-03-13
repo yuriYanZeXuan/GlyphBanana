@@ -1,8 +1,8 @@
 """
-VLM Agent: 统一的 VLM 调用中心
+VLM Agent: Unified VLM Call Center
 
-所有 VLM/LLM 调用、客户端初始化和 prompt 模板集中在此文件。
-提供 Agent 式的排版分析、prompt 改写、图像评分等功能。
+All VLM/LLM calls, client initialization and prompt templates are centralized in this file.
+Provides Agent-style typography analysis, prompt rewriting, image scoring and other functions.
 """
 
 import os
@@ -17,7 +17,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont
 
-# 加载环境变量
+# Load environment variables
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 
@@ -36,7 +36,7 @@ def _extract_text_from_prompt(prompt: str) -> str:
     return ' '.join(texts) if texts else prompt
 
 
-# ============ Prompt 模板 ============
+# ============ Prompt Templates ============
 
 ANALYZE_TYPOGRAPHY_PROMPT = (
     "You are an expert in image typography analysis. Given a reference image with a 5×5 grid and coordinate annotations, "
@@ -99,17 +99,17 @@ OCR_PROMPT = (
 )
 
 
-# ============ 工具函数 ============
+# ============ Utility Functions ============
 
 def _encode_image_b64(image: Image.Image) -> str:
-    """PIL Image -> base64 字符串"""
+    """PIL Image -> base64 string"""
     buf = BytesIO()
     image.save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode()
 
 
 def _text_accuracy(ground_truth: str, recognized: str) -> float:
-    """计算文本准确度（Levenshtein 距离）"""
+    """Calculate text accuracy (Levenshtein distance)"""
     import Levenshtein
     gt = ' '.join(ground_truth.lower().split())
     rec = ' '.join(recognized.lower().split())
@@ -120,7 +120,7 @@ def _text_accuracy(ground_truth: str, recognized: str) -> float:
 
 
 def _get_grid_font() -> ImageFont.FreeTypeFont:
-    """获取用于网格坐标标注的字体"""
+    """Get font for grid coordinate annotation"""
     font_path = Path(__file__).parent.parent / "assets" / "Arial-Unicode-Bold.ttf"
     if font_path.exists():
         return ImageFont.truetype(str(font_path), 16)
@@ -128,7 +128,7 @@ def _get_grid_font() -> ImageFont.FreeTypeFont:
 
 
 def _add_grid_overlay(image: Image.Image, grid_size: int = 6) -> Image.Image:
-    """在图像上添加网格和坐标标注"""
+    """Add grid and coordinate annotations to image"""
     img = image.copy()
     draw = ImageDraw.Draw(img)
     width, height = img.size
@@ -166,7 +166,7 @@ def _add_grid_overlay(image: Image.Image, grid_size: int = 6) -> Image.Image:
 
 
 def _extract_json_from_response(text: str) -> dict:
-    """从 VLM 响应中提取 JSON 对象"""
+    """Extract JSON object from VLM response"""
     match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
     if match:
         return json.loads(match.group(1).strip())
@@ -174,13 +174,13 @@ def _extract_json_from_response(text: str) -> dict:
     end = text.rfind("}")
     if start != -1 and end != -1 and end > start:
         return json.loads(text[start : end + 1])
-    raise ValueError(f"无法从 VLM 响应中提取 JSON:\n{text[:500]}")
+    raise ValueError(f"Cannot extract JSON from VLM response:\n{text[:500]}")
 
 
-# ============ VLMAgent 类 ============
+# ============ VLMAgent Class ============
 
 class VLMAgent:
-    """统一的 VLM 调用接口"""
+    """Unified VLM call interface"""
 
     def __init__(
         self,
@@ -197,7 +197,7 @@ class VLMAgent:
         self._client = OpenAI(api_key=api_key, base_url=self._base_url)
 
     def _api_call(self, **call_kwargs) -> str:
-        """调用 VLM API，返回响应文本"""
+        """Call VLM API, return response text"""
         resp = self._client.chat.completions.create(**call_kwargs)
         return resp.choices[0].message.content
 
@@ -210,7 +210,7 @@ class VLMAgent:
         temperature: float = 0.7,
         **format_kwargs,
     ) -> str:
-        """通用 VLM 调用"""
+        """Generic VLM call"""
         if format_kwargs:
             system_prompt = system_prompt.format(**format_kwargs)
 
@@ -237,10 +237,10 @@ class VLMAgent:
         prompt: str,
         text_contents: list[str],
     ) -> dict:
-        """分析 Pass 1 参考图，自主规划文本排版
+        """Analyze Pass 1 reference image, autonomously plan text typography
         
         Returns:
-            typography_plan 字典，包含 image_analysis 和 text_regions
+            typography_plan dict containing image_analysis and text_regions
         """
         image_with_grid = _add_grid_overlay(image)
 
@@ -266,11 +266,11 @@ class VLMAgent:
         return _extract_json_from_response(raw)
 
     def generate_clean_prompt(self, prompt: str, typography_plan: dict = None) -> str:
-        """将含文字描述的 prompt 改写为不渲染任何文本的 clean 版本
+        """Rewrite prompt containing text description to a clean version that renders no text
         
         Args:
-            prompt: 原始 prompt
-            typography_plan: 排版规划（可选，用于未来扩展）
+            prompt: Original prompt
+            typography_plan: Typography plan (optional, for future extension)
         """
         raw = self.call_vlm(
             GENERATE_CLEAN_PROMPT,
@@ -285,7 +285,7 @@ class VLMAgent:
         images: list[Image.Image],
         prompt: str,
     ) -> list[float]:
-        """对每张图做 OCR 并计算文本准确度，返回 scores 列表"""
+        """Perform OCR on each image and calculate text accuracy, return scores list"""
         ground_truth = _extract_text_from_prompt(prompt)
 
         scores = []
@@ -315,14 +315,14 @@ class VLMAgent:
         images: list[Image.Image],
         prompt: str,
     ) -> int:
-        """从多张图像中选择最佳的一张，返回 0-based 索引
+        """Select the best image from multiple candidates, return 0-based index
         
         Args:
-            images: 候选图像列表
-            prompt: 原始生成 prompt
+            images: List of candidate images
+            prompt: Original generation prompt
             
         Returns:
-            最佳图像的索引
+            Index of best image
         """
         n = len(images)
         if n <= 1:
@@ -342,8 +342,8 @@ class VLMAgent:
             temperature=0.1,
         ).strip()
         
-        # 解析数字
+        # Parse number
         nums = [int(x) for x in __import__('re').findall(r"\d+", raw)]
         if nums and 1 <= nums[0] <= n:
             return nums[0] - 1
-        return 0  # 默认返回第一个
+        return 0  # Default return first

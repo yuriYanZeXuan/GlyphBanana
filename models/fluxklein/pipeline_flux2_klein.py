@@ -26,12 +26,12 @@ from diffusers.utils import is_torch_xla_available, logging, replace_example_doc
 from diffusers.utils.torch_utils import randn_tensor
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 
-from models import AutoencoderKLFlux2, Flux2Transformer2DModel
+from .models import AutoencoderKLFlux2, Flux2Transformer2DModel
 
 from diffusers.loaders import Flux2LoraLoaderMixin
 # Local imports
-from image_processor import Flux2ImageProcessor
-from pipeline_output import Flux2PipelineOutput
+from .image_processor import Flux2ImageProcessor
+from .pipeline_output import Flux2PipelineOutput
 
 
 if is_torch_xla_available():

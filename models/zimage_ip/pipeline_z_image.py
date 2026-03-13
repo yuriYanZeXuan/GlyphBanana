@@ -18,11 +18,9 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import torch
 from transformers import AutoTokenizer, PreTrainedModel
 
-# 从同目录导入自定义模块
 from .transformer_z_image import ZImageTransformer2DModel
 from .attention_processor import IPAZImageAttnProcessor
 
-# 从 diffusers 导入标准组件
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FromSingleFileMixin, ZImageLoraLoaderMixin
 from diffusers.models.autoencoders import AutoencoderKL
@@ -64,7 +62,6 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-# Copied from diffusers.pipelines.flux.pipeline_flux.calculate_shift
 def calculate_shift(
     image_seq_len,
     base_seq_len: int = 256,
@@ -78,7 +75,6 @@ def calculate_shift(
     return mu
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
     scheduler,
     num_inference_steps: Optional[int] = None,
@@ -418,7 +414,6 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
         self._interrupt = False
         self._cfg_normalization = cfg_normalization
         self._cfg_truncation = cfg_truncation
-        # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -426,7 +421,6 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
         else:
             batch_size = len(prompt_embeds)
 
-        # If prompt_embeds is provided and prompt is None, skip encoding
         if prompt_embeds is not None and prompt is None:
             if self.do_classifier_free_guidance and negative_prompt_embeds is None:
                 raise ValueError(
@@ -447,7 +441,6 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
                 max_sequence_length=max_sequence_length,
             )
 
-        # 4. Prepare latent variables
         num_channels_latents = self.transformer.in_channels
 
         latents = self.prepare_latents(
@@ -461,7 +454,6 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
             latents,
         )
 
-        # Repeat prompt_embeds for num_images_per_prompt
         if num_images_per_prompt > 1:
             prompt_embeds = [pe for pe in prompt_embeds for _ in range(num_images_per_prompt)]
             if self.do_classifier_free_guidance and negative_prompt_embeds:
@@ -470,7 +462,6 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
         actual_batch_size = batch_size * num_images_per_prompt
         image_seq_len = (latents.shape[2] // 2) * (latents.shape[3] // 2)
 
-        # 5. Prepare timesteps
         mu = calculate_shift(
             image_seq_len,
             self.scheduler.config.get("base_image_seq_len", 256),
@@ -490,19 +481,15 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         self._num_timesteps = len(timesteps)
 
-        # 6. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
 
-                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latents.shape[0])
                 timestep = (1000 - timestep) / 1000
-                # Normalized time for time-aware config (0 at start, 1 at end)
                 t_norm = timestep[0].item()
 
-                # Handle cfg truncation
                 current_guidance_scale = self.guidance_scale
                 if (
                     self.do_classifier_free_guidance
@@ -512,7 +499,6 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
                     if t_norm > self._cfg_truncation:
                         current_guidance_scale = 0.0
 
-                # Run CFG only if configured AND scale is non-zero
                 apply_cfg = self.do_classifier_free_guidance and current_guidance_scale > 0
 
                 if apply_cfg:
@@ -533,7 +519,6 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
                 )[0]
 
                 if apply_cfg:
-                    # Perform CFG
                     pos_out = model_out_list[:actual_batch_size]
                     neg_out = model_out_list[actual_batch_size:]
 
@@ -544,7 +529,6 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
 
                         pred = pos + current_guidance_scale * (pos - neg)
 
-                        # Renormalization
                         if self._cfg_normalization and float(self._cfg_normalization) > 0.0:
                             ori_pos_norm = torch.linalg.vector_norm(pos)
                             new_pos_norm = torch.linalg.vector_norm(pred)
@@ -561,7 +545,6 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
                 noise_pred = noise_pred.squeeze(2)
                 noise_pred = -noise_pred
 
-                # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred.to(torch.float32), t, latents, return_dict=False)[0]
                 assert latents.dtype == torch.float32
 
@@ -575,7 +558,6 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
-                # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
 
@@ -589,7 +571,6 @@ class ZImagePipeline(DiffusionPipeline, ZImageLoraLoaderMixin, FromSingleFileMix
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)
 
-        # Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:

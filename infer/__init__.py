@@ -1,10 +1,10 @@
 """
-GlyphBanana 推理模块
+GlyphBanana Inference Module
 
-包含核心接口:
-- VLMAgent: 统一的 VLM 调用中心（排版分析、OCR评分）
-- GlyphInjector: 文字渲染和 latent 注入
-- AttentionEnhancement: 注意力增强
+Contains core interfaces:
+- VLMAgent: Unified VLM call center (typography analysis, OCR scoring)
+- GlyphInjector: Text rendering and latent injection
+- AttentionEnhancement: Attention enhancement
 """
 
 from .VLM_agent import VLMAgent

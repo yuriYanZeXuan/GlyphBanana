@@ -1,4 +1,0 @@
-"""
-Diffusers patches and customizations
-"""
-
