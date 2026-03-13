@@ -106,7 +106,7 @@ def load_qwen_pipeline(model_path: str, device: str, dtype=torch.bfloat16):
     pipe.to("cpu")
     if isinstance(device, str) and device.startswith("cuda"):
         gpu_id = int(device.split(":", 1)[1]) if ":" in device else 0
-        pipe.enable_sequential_cpu_offload(gpu_id=gpu_id)
+        pipe.enable_model_cpu_offload(gpu_id=gpu_id)
     print("QwenImage model loaded.")
     return pipe
 
@@ -292,6 +292,23 @@ def run_pass2_injection_qwen(
     img_shapes = [[(1, latent_h // 2, latent_w // 2)]]
     txt_seq_lens = [prompt_embeds.shape[1]]
     neg_txt_seq_lens = [negative_embeds.shape[1]]
+
+    sigmas = np.linspace(1.0, 1 / args.steps, args.steps)
+    image_seq_len = latent.shape[1]
+    mu = calculate_qwen_shift(
+        image_seq_len,
+        pipeline.scheduler.config.get("base_image_seq_len", 256),
+        pipeline.scheduler.config.get("max_image_seq_len", 4096),
+        pipeline.scheduler.config.get("base_shift", 0.5),
+        pipeline.scheduler.config.get("max_shift", 1.15),
+    )
+    timesteps, _ = retrieve_qwen_timesteps(
+        pipeline.scheduler,
+        args.steps,
+        execution_device,
+        sigmas=sigmas,
+        mu=mu,
+    )
 
     guidance = None
     if pipeline.transformer.config.guidance_embeds and args.qwen_guidance_scale is not None:
