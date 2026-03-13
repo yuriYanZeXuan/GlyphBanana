@@ -263,6 +263,7 @@ def run_pass2_injection(
     return latent
 
 
+@torch.no_grad()
 def run_pass2_injection_qwen(
     pipeline,
     prompt: str,
