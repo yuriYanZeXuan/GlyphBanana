@@ -1,11 +1,11 @@
 """
-Glyph Injector: 文字渲染和 latent 注入接口
+Glyph Injector: Text Rendering and Latent Injection Interface
 
-实现流程：
-1. 使用系统字体白底黑字渲染文字
-2. 使用大津法二值化提取文字 mask
-3. 将文字模板做 flow matching inversion，保存 latent 列表
-4. 在去噪过程中注入对应 timestep 的 latent
+Implementation Flow:
+1. Render text with system font on white background with black text
+2. Extract text mask using Otsu's method binarization
+3. Perform flow matching inversion on text template, save latent list
+4. Inject latent at corresponding timestep during denoising
 """
 
 import cv2
@@ -19,7 +19,7 @@ from .formula_helper import render_formula, resolve_font_name
 
 
 class GlyphInjector:
-    """文字注入器：实现文字模板渲染、mask 提取、latent inversion 和 latent 注入"""
+    """Text Injector: Implements text template rendering, mask extraction, latent inversion and latent injection"""
     
     def __init__(
         self, 
@@ -33,13 +33,13 @@ class GlyphInjector:
         self.device = device
         self.dtype = dtype
         
-        # VAE 缩放因子
+        # VAE scale factor
         if hasattr(vae, 'config') and hasattr(vae.config, 'block_out_channels'):
             self.vae_scale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
         else:
             self.vae_scale_factor = getattr(vae, 'spatial_compression_ratio', 8)
     
-    # 颜色名 → hex 映射
+    # Color name -> hex mapping
     _COLOR_MAP = {
         "white": "#FFFFFF", "black": "#FFFFFF", "red": "#FF4444",
         "blue": "#6688FF", "green": "#44DD44", "yellow": "#FFEE44",
@@ -50,7 +50,7 @@ class GlyphInjector:
 
     @classmethod
     def _resolve_color(cls, color: str) -> str:
-        """将颜色名/hex 统一映射为模板可用的 hex 值（黑底上可见）"""
+        """Map color name/hex to hex value usable for template (visible on black background)"""
         c = color.strip().lower()
         if c in cls._COLOR_MAP:
             return cls._COLOR_MAP[c]
@@ -74,7 +74,7 @@ class GlyphInjector:
         font_path: Optional[str] = None,
         rotation: float = 0.0,
     ) -> Image.Image:
-        """渲染文字模板图像（黑底 + 指定文字颜色）"""
+        """Render text template image (black background + specified text color)"""
         return render_formula(
             text, width, height, text_color,
             force_latex, font_weight=font_weight, font_path=font_path,
@@ -82,7 +82,7 @@ class GlyphInjector:
         )
     
     def extract_text_mask(self, image: np.ndarray) -> np.ndarray:
-        """使用大津法提取文字 mask，文字区域为 255"""
+        """Extract text mask using Otsu's method, text regions are 255"""
         if len(image.shape) == 3:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         else:
@@ -109,7 +109,7 @@ class GlyphInjector:
         return hasattr(self.vae, 'spatial_compression_ratio')
 
     def encode_image(self, image: Image.Image) -> torch.Tensor:
-        """将 PIL Image 编码为 latent"""
+        """Encode PIL Image to latent"""
         img_array = np.array(image).astype(np.float32) / 255.0
         img_tensor = torch.from_numpy(img_array).permute(2, 0, 1).unsqueeze(0)
         img_tensor = img_tensor * 2.0 - 1.0
@@ -129,7 +129,7 @@ class GlyphInjector:
         return latent
     
     def decode_latent(self, latent: torch.Tensor) -> Image.Image:
-        """将 latent 解码为 PIL Image"""
+        """Decode latent to PIL Image"""
         with torch.no_grad():
             latent = latent.to(self.vae.dtype)
             if hasattr(self.vae.config, 'shift_factor'):
@@ -155,7 +155,7 @@ class GlyphInjector:
         strength: float,
         kernel_size: int = 5,
     ):
-        """频率分解注入：只注入 template 的高频分量，保留 current 的低频分量"""
+        """Frequency decomposition injection: only inject high-frequency components from template, preserve low-frequency components from current"""
         pad = kernel_size // 2
 
         def blur(x):
@@ -178,7 +178,7 @@ class GlyphInjector:
         noise: torch.Tensor,
         timesteps: torch.Tensor
     ) -> list[torch.Tensor]:
-        """计算 flow matching inversion 的 latent 列表
+        """Compute latent list for flow matching inversion
         
         Flow matching: z_t = (1 - sigma) * z_0 + sigma * noise
         """
@@ -199,7 +199,7 @@ class GlyphInjector:
         noise: torch.Tensor,
         timesteps: torch.Tensor,
     ) -> dict:
-        """根据排版规划渲染字形模版并准备注入数据"""
+        """Render glyph templates according to typography plan and prepare injection data"""
         width, height = image_size
         combined_template = Image.new("RGB", (width, height), "black")
         
@@ -236,7 +236,7 @@ class GlyphInjector:
         combined_latent = self.encode_image(combined_template)
         latent_list = self.compute_inversion_latents(combined_latent, noise, timesteps)
 
-        # mask 下采样到 latent 空间
+        # Downsample mask to latent space
         latent_h = 2 * (height // (self.vae_scale_factor * 2))
         latent_w = 2 * (width // (self.vae_scale_factor * 2))
         mask_area = cv2.resize(full_mask, (latent_w, latent_h), interpolation=cv2.INTER_AREA)
@@ -256,7 +256,7 @@ class GlyphInjector:
         typography_plan: dict,
         image_size: Tuple[int, int],
     ) -> Tuple[Image.Image, np.ndarray]:
-        """轻量渲染：只返回 (combined_template, full_mask)，不做 VAE/inversion"""
+        """Lightweight rendering: only returns (combined_template, full_mask), no VAE/inversion"""
         width, height = image_size
         combined_template = Image.new("RGB", (width, height), "black")
 
@@ -294,20 +294,20 @@ class GlyphInjector:
         freq_decompose: bool = True,
         freq_kernel_size: int = 5,
     ) -> torch.Tensor:
-        """在当前 latent 中注入文字区域的 latent（后置注入）
+        """Inject text region latent into current latent (post-injection)
         
         Args:
-            current_latent: scheduler step 后的 latent
-            injection_data: prepare_injection 返回的数据
-            step_idx: 注入使用的 latent 索引（后置注入时为 denoising_step + 1）
-            mask_strength: 空间混合强度 (0-1)
-            timestep_ratio: 时间步注入范围 (t_start, t_end)
-            freq_decompose: 是否启用频率分解注入
-            freq_kernel_size: 高斯模糊核大小
+            current_latent: latent after scheduler step
+            injection_data: data returned by prepare_injection
+            step_idx: latent index for injection (post-injection is denoising_step + 1)
+            mask_strength: spatial blending strength (0-1)
+            timestep_ratio: timestep injection range (t_start, t_end)
+            freq_decompose: whether to enable frequency decomposition injection
+            freq_kernel_size: Gaussian blur kernel size
         """
         total_steps = injection_data["total_steps"]
         
-        # 判断当前步是否需要注入
+        # Determine if injection is needed at current step
         t_start, t_end = timestep_ratio
         step_ratio = step_idx / total_steps
         if not (t_start <= step_ratio < t_end):
@@ -322,7 +322,7 @@ class GlyphInjector:
         mask = injection_data["mask_latent"]
         mask = mask.expand_as(current_latent)
         
-        # 频率分解注入
+        # Frequency decomposition injection
         if freq_decompose:
             return self._freq_decompose_inject(
                 current_latent, text_latent, mask, mask_strength, freq_kernel_size
@@ -332,7 +332,7 @@ class GlyphInjector:
 
 
 def create_glyph_injector(pipeline, device: str = "cuda") -> GlyphInjector:
-    """从 pipeline 创建 GlyphInjector"""
+    """Create GlyphInjector from pipeline"""
     return GlyphInjector(
         vae=pipeline.vae,
         scheduler=pipeline.scheduler,

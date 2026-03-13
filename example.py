@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-GlyphBanana 使用示例
+GlyphBanana Usage Example
 
-生成爱因斯坦写二次方程求根公式的图像
+Generate an image of Einstein writing the quadratic formula
 """
 
 import subprocess
@@ -10,9 +10,9 @@ import sys
 
 
 def main():
-    # 示例 1: 生成公式图像
+    # Example 1: Generate formula image
     print("=" * 60)
-    print("示例 1: 生成爱因斯坦写二次方程求根公式")
+    print("Example 1: Generate Einstein writing quadratic formula")
     print("=" * 60)
     
     cmd = [
@@ -24,12 +24,12 @@ def main():
         "--steps", "20",
     ]
     
-    print(f"运行: {' '.join(cmd)}")
+    print(f"Run: {' '.join(cmd)}")
     print()
     
-    # 示例 2: 评估生成结果
+    # Example 2: Evaluate generation result
     print("=" * 60)
-    print("示例 2: 评估文本准确度")
+    print("Example 2: Evaluate text accuracy")
     print("=" * 60)
     
     eval_cmd = [
@@ -38,25 +38,25 @@ def main():
         "--prompt", 'Albert Einstein writing the quadratic formula "x = {-b \\pm \\sqrt{b^2-4ac}} / {2a}" on a blackboard',
     ]
     
-    print(f"运行: {' '.join(eval_cmd)}")
+    print(f"Run: {' '.join(eval_cmd)}")
     print()
     
-    # 示例 3: 更多生成示例
+    # Example 3: More generation examples
     examples = [
         {
-            "name": "商店招牌",
+            "name": "Store Sign",
             "prompt": 'A storefront sign saying "CAFE" in neon lights',
             "text": "CAFE",
             "output": "cafe_sign.png"
         },
         {
-            "name": "书籍封面",
+            "name": "Book Cover",
             "prompt": 'A book cover with title "Deep Learning" in elegant typography',
             "text": "Deep Learning",
             "output": "book_cover.png"
         },
         {
-            "name": "海报",
+            "name": "Poster",
             "prompt": 'A movie poster with text "COMING SOON" in bold letters',
             "text": "COMING SOON",
             "output": "movie_poster.png"
@@ -64,7 +64,7 @@ def main():
     ]
     
     print("=" * 60)
-    print("更多示例:")
+    print("More Examples:")
     print("=" * 60)
     for ex in examples:
         print(f"\n{ex['name']}:")
