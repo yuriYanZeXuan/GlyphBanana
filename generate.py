@@ -122,15 +122,9 @@ def cuda_empty_cache(device: str):
         torch.cuda.empty_cache()
 
 
-def move_qwen_component(pipeline, component_name: str, device: str):
-    component = getattr(pipeline, component_name, None)
-    if component is not None:
-        component.to(device)
-
-
 def offload_qwen_pipeline(pipeline):
-    for component_name in ("text_encoder", "transformer", "vae"):
-        move_qwen_component(pipeline, component_name, "cpu")
+    if hasattr(pipeline, "maybe_free_model_hooks"):
+        pipeline.maybe_free_model_hooks()
     cuda_empty_cache(getattr(pipeline, "_execution_device", "cuda"))
 
 
