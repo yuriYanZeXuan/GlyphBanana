@@ -1,34 +1,55 @@
 # GlyphBanana: Text Rendering with Glyph Injection
 
-GlyphBanana is a text-to-image generation framework designed for high-quality text rendering in images. It uses a three-stage pipeline with VLM-guided typography planning and glyph injection for precise text placement.
+[![arXiv](https://img.shields.io/badge/arXiv-2603.12155-b31b1b.svg)](https://arxiv.org/abs/2603.12155)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+GlyphBanana is a text-to-image generation framework designed for high-quality text rendering in images. It uses an agentic workflow with VLM-guided typography planning and glyph injection for precise text placement.
 
 ## Overview
 
-The framework consists of three main stages:
+![Pipeline](./assets/pipeline.png)
 
-1. **Pass 1 (Reference)**: Generate a reference image using the full prompt
-2. **VLM Planning**: Analyze the reference image and plan typography layout (bbox, color, font)
-3. **Pass 2 (Injection)**: Generate with a clean prompt and inject glyph latents at specified regions
-4. **Pass 3 (Harmonization)**: Optional style transfer to harmonize text with background
+GlyphBanana employs a **four-stage agentic pipeline** to achieve precise text rendering:
+
+1. **Condition Extraction**: Analyzes the input prompt to extract text content and style requirements
+2. **Layout Planning**: Uses VLM to analyze draft images and generate typography plans (font, color, bounding box, rotation)
+3. **Glyph Injection**: Renders precise glyph shapes and injects them into latent space during the transitional denoising phase, with attention re-weighting to strengthen text-to-image associations
+4. **Style Refinement**: Optional harmonization to blend text naturally with the background while preserving legibility
+
+### Key Advantages
+
+- **Plug-and-Play Design**: Works with any diffusion model without fine-tuning
+- **Precise Control**: Direct glyph injection ensures character-level accuracy
+- **Flexible Layout**: VLM-guided planning supports arbitrary text positioning and styling
+- **Attention Enhancement**: Re-weighting mechanism strengthens text-region focus during generation
+
+## Benchmark Results
+
+![Benchmark](./assets/bench.png)
+
+Our method achieves **state-of-the-art performance** on text rendering benchmarks. GlyphBanana significantly outperforms existing approaches:
+
+- **OCR Accuracy**: 85.9% (vs. 71.8% for Zimage baseline, +14.1)
+- **OCR Normalized Edit Distance**: 88.1 (vs. 76.3 for Zimage baseline, +11.8)
+- **VLM Faithfulness**: 0.764 (vs. 0.703 for Zimage baseline)
+- **User Study Rankings**: Best aesthetic quality (2.27) and faithfulness (2.58)
+
+The results demonstrate GlyphBanana's superior capability in generating readable, well-integrated text across diverse scenarios.
 
 ## Installation
 
 ```bash
-# Clone the repository
 git clone <repo-url>
 cd GlyphBanana
-
-# Install dependencies
 pip install -r requirements.txt
 
-# Set up VLM API credentials
 export QST_BASE_URL="your-api-url"
 export QST_API_KEY="your-api-key"
 ```
 
 ## Quick Start
 
-### Generate an Image
+### Generation
 
 ```bash
 python generate.py \
@@ -37,55 +58,13 @@ python generate.py \
     --output output.png
 ```
 
-### Generate with `qwen-image`
-
-```bash
-python generate.py \
-    --backend qwen-image \
-    --prompt 'A whiteboard displaying "E=mc²" in a classroom' \
-    --text "E=mc²" \
-    --output output_qwen.png
-```
-
-### Evaluate Text Accuracy
-
-```bash
-python evaluate.py \
-    --image output.png \
-    --prompt 'A whiteboard displaying "E=mc²"'
-```
-
-### Batch Evaluation
+### Evaluation
 
 ```bash
 python evaluate.py \
     --image_dir outputs/ \
     --prompt_file prompts.json \
     --output results.json
-```
-
-### GlyphBanana-Benchmark Batch Generation
-
-```bash
-python scripts/batch_generate.py \
-    --dataset-dir eval/GlyphBanana-Benchmark \
-    --output-dir outputs/glyphbanana_benchmark_zimage \
-    --backend zimage
-```
-
-### GlyphBanana-Benchmark Batch Evaluation
-
-```bash
-python scripts/batch_evaluate.py \
-    --dataset-dir eval/GlyphBanana-Benchmark \
-    --image-dir outputs/glyphbanana_benchmark_zimage \
-    --output outputs/glyphbanana_benchmark_zimage/results.json
-```
-
-### Gradio Demo
-
-```bash
-python demo/gradio_app.py --server-port 7860
 ```
 
 ## Usage
@@ -96,16 +75,15 @@ python demo/gradio_app.py --server-port 7860
 python generate.py \
     --backend zimage \
     --prompt "Your prompt with text description" \
-    --text "Text to render" "More text" \
+    --text "Text to render" \
     --output result.png \
     --steps 20 \
     --seed 42 \
     --height 1024 \
-    --width 1024 \
-    --no-harmonize  # Skip Pass 3
+    --width 1024
 ```
 
-手工 layout 可通过 `--text-regions-file regions.json` 传入，格式为：
+Custom layout can be passed via `--text-regions-file regions.json`:
 
 ```json
 [
@@ -143,7 +121,6 @@ The `prompts.json` file should map image filenames to their expected text:
 GlyphBanana/
 ├── generate.py          # Unified generation entry for zimage/qwen-image
 ├── evaluate.py          # OCR evaluation script + reusable helpers
-├── example.py           # Usage examples
 ├── demo/                # Gradio demo
 ├── scripts/             # Batch generation/evaluation scripts
 ├── requirements.txt     # Dependencies
@@ -155,8 +132,6 @@ GlyphBanana/
 │   └── attn_enhancement.py  # Attention enhancement
 ├── train/zimage_ip/     # ZImage pipeline (core generation model)
 ├── baselines/           # Minimal baselines
-│   ├── fluxklein/       # Pass 3 harmonization (required)
-│   └── results/         # Output directory
 └── eval/                # Evaluation module and benchmark datasets
 ```
 
@@ -178,12 +153,17 @@ export QST_API_KEY2="backup-api-key"  # Optional
 
 ## Citation
 
+If you find this work useful, please cite:
+
 ```bibtex
-@article{glyphbanana2025,
-  title={GlyphBanana: Text Rendering with Glyph Injection},
-  author={Your Name},
-  journal={arXiv preprint},
-  year={2025}
+@misc{glyphbanana,
+      title={GlyphBanana: Advancing Precise Text Rendering Through Agentic Workflows}, 
+      author={Zexuan Yan and Jiarui Jin and Yue Ma and Shijian Wang and Jiahui Hu and Wenxiang Jiao and Yuan Lu and Linfeng Zhang},
+      year={2026},
+      eprint={2603.12155},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2603.12155}, 
 }
 ```
 
